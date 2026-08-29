@@ -118,6 +118,22 @@ export class D1ReviewQRRepository implements ReviewQRRepository {
     return Boolean(row);
   }
 
+  async claimOperationKey(
+    scope: string,
+    key: string,
+    responseRef: string,
+    now: number,
+    ttlMs: number,
+  ): Promise<boolean> {
+    await this.db.prepare(
+      "DELETE FROM operation_keys WHERE scope = ? AND key = ? AND expires_at <= ?",
+    ).bind(scope, key, now).run();
+    const result = await this.db.prepare(
+      "INSERT OR IGNORE INTO operation_keys (scope, key, response_ref, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+    ).bind(scope, key, responseRef, now, now + ttlMs).run();
+    return result.meta.changes === 1;
+  }
+
   async append(command: EventCommand): Promise<"created" | "duplicate"> {
     const restaurant = await this.findByPublicId(command.restaurantPublicId);
     if (!restaurant || !(await this.sessionBelongsToRestaurant(command.sessionId, restaurant.id))) {

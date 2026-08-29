@@ -1,11 +1,29 @@
 import type { GenerateDraftRequest, GenerateDraftResponse, RecordEventRequest } from "@/src/contracts/http";
-import type { EventCommand } from "@/src/domain/review";
+import { lengthBucketForText, type EventCommand } from "@/src/domain/review";
 import type { ReviewQRRepository } from "@/src/application/ports/repositories";
 import type { DraftGenerator } from "@/src/application/ports/draft-generator";
 import { DefaultDraftPolicy } from "@/src/infrastructure/ai/deterministic";
 
-export class NotFoundError extends Error {}
-export class RateLimitError extends Error {}
+export class NotFoundError extends Error {
+  constructor(message = "Restaurant unavailable.") {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
+export class RateLimitError extends Error {
+  constructor(message = "Draft rate limit exceeded.") {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
+export class DuplicateRequestError extends Error {
+  constructor(message = "Draft request already handled.") {
+    super(message);
+    this.name = "DuplicateRequestError";
+  }
+}
 type RecordableEvent = RecordEventRequest & { failureReason?: string };
 
 export class ReviewService {
@@ -16,6 +34,7 @@ export class ReviewService {
     private readonly primary: DraftGenerator,
     private readonly fallback: DraftGenerator,
     private readonly now: () => number = Date.now,
+    private readonly providerTimeoutMs = 5_000,
   ) {}
 
   async generate(publicId: string, request: GenerateDraftRequest): Promise<GenerateDraftResponse> {
@@ -28,6 +47,14 @@ export class ReviewService {
       throw new RateLimitError();
     }
     const now = this.now();
+    const claimed = await this.repository.claimOperationKey(
+      `draft:${restaurant.id}:${request.sessionId}`,
+      request.idempotencyKey,
+      "privacy_no_replay",
+      now,
+      600_000,
+    );
+    if (!claimed) throw new DuplicateRequestError();
     const input = {
       restaurantPublicId: publicId,
       restaurantName: restaurant.displayName,
@@ -42,12 +69,12 @@ export class ReviewService {
       eventId: crypto.randomUUID(), sessionId: request.sessionId,
       eventType: "topics_selected", topicIds: request.topicIds,
       topicCount: request.topicIds.length,
-    }, now);
+    }, now).catch(() => undefined);
     const draftId = crypto.randomUUID();
     let result;
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5_000);
+      const timeout = setTimeout(() => controller.abort(), this.providerTimeoutMs);
       try {
         result = await this.primary.generate(input, controller.signal);
         this.policy.validate(result, input);
@@ -59,15 +86,15 @@ export class ReviewService {
         eventId: crypto.randomUUID(), sessionId: request.sessionId,
         eventType: "draft_generation_failed",
         failureReason: error instanceof DOMException && error.name === "AbortError" ? "timeout" : "provider_error",
-      }, now);
+      }, now).catch(() => undefined);
       result = await this.fallback.generate(input, new AbortController().signal);
       this.policy.validate(result, input);
     }
     await this.record(publicId, {
       eventId: draftId, sessionId: request.sessionId, eventType: "draft_generated",
       rating: request.rating, draftSource: result.source,
-      lengthBucket: wordLengthBucket(result.text), draftId,
-    }, now);
+      lengthBucket: lengthBucketForText(result.text), draftId,
+    }, now).catch(() => undefined);
     return { ...result, draftId, generatedAt: now };
   }
 
@@ -94,12 +121,4 @@ export class ReviewService {
     };
     return this.repository.append(command);
   }
-}
-
-function wordLengthBucket(text: string): "10-24" | "25-60" | "61-250" | "251-1000" {
-  const count = text.trim().split(/\s+/u).filter(Boolean).length;
-  if (count <= 24) return "10-24";
-  if (count <= 60) return "25-60";
-  if (count <= 250) return "61-250";
-  return "251-1000";
 }

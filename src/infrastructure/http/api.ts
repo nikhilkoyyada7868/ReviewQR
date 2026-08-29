@@ -23,6 +23,7 @@ export function apiError(error: unknown) {
   if (error instanceof AdminAuthError) return json({ error: { code: error.status === 401 ? "UNAUTHORIZED" : "FORBIDDEN", message: error.message } }, error.status);
   if (error instanceof Error && error.name === "NotFoundError") return json({ error: { code: "NOT_FOUND", message: "Restaurant unavailable." } }, 404);
   if (error instanceof Error && error.name === "RateLimitError") return json({ error: { code: "RATE_LIMITED", message: "Please wait briefly or write your own review.", retryAfterSeconds: 60 } }, 429, { "retry-after": "60" });
+  if (error instanceof Error && error.name === "DuplicateRequestError") return json({ error: { code: "CONFLICT", message: "That draft request was already handled. Please try again or write your own review." } }, 409);
   console.error("reviewqr_api_error", { name: error instanceof Error ? error.name : "UnknownError" });
   return json({ error: { code: "SERVICE_UNAVAILABLE", message: "ReviewQR is temporarily unavailable." } }, 503);
 }

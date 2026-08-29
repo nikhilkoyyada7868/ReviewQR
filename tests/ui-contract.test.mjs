@@ -41,6 +41,7 @@ test("admin UI supports the onboarding and honest analytics essentials", async (
   assert.match(form, /3 and 8 active topics/);
   assert.match(form, /readOnly={Boolean\(record\)}/);
   assert.match(form, /idempotency-key/);
+  assert.match(form, /window\.location\.assign/);
   assert.match(detail, /Google handoffs/);
   assert.match(detail, /Customer reported, not verified/);
   assert.match(detail, /Download QR/);
@@ -52,4 +53,15 @@ test("starter preview metadata and UI are removed", async () => {
   assert.doesNotMatch(page + layout, /SkeletonPreview|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(layout, /ReviewQR/);
+});
+
+test("public sessions survive API reloads and client analytics use shared word buckets", async () => {
+  const [route, flow] = await Promise.all([
+    read("app/api/public/restaurants/[restaurant]/route.ts"),
+    read("app/r/[slug]/review-flow.tsx"),
+  ]);
+  assert.match(route, /Path=\/;/);
+  assert.doesNotMatch(route, /Path=\/r/);
+  assert.match(flow, /lengthBucketForText\(value\)/);
+  assert.match(flow, /lengthBucketForText\(text\)/);
 });

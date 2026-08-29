@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiError, GenerateDraftResponse, PublicRestaurantResponse } from "@/src/contracts/http";
-import type { Rating, DraftSource } from "@/src/domain/review";
+import { lengthBucketForText, type Rating, type DraftSource } from "@/src/domain/review";
 
 type LoadState = "loading" | "ready" | "unavailable" | "error";
 type Notice = { tone: "info" | "success" | "warning" | "error"; text: string } | null;
@@ -10,13 +10,6 @@ const ratings: Rating[] = [1, 2, 3, 4, 5];
 
 function uid() {
   return globalThis.crypto?.randomUUID?.() ?? `reviewqr_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
-
-function bucket(length: number) {
-  if (length <= 24) return "10-24";
-  if (length <= 60) return "25-60";
-  if (length <= 250) return "61-250";
-  return "251-1000";
 }
 
 async function messageFrom(response: Response, fallback: string) {
@@ -86,7 +79,7 @@ export function ReviewFlow({ slug }: { slug: string }) {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ sessionId: data.sessionId, rating, topicIds, idempotencyKey: uid() }),
       });
-      if (response.status === 429) {
+      if (response.status === 429 || response.status === 409) {
         const body = await response.json() as ApiError;
         setNotice({ tone: "warning", text: `${body.error.message} Your rating and highlights are still here.` }); return;
       }
@@ -109,7 +102,7 @@ export function ReviewFlow({ slug }: { slug: string }) {
     setText(value); setNotice(null);
     if (source !== "customer" && originalText && value !== originalText && !editedRecorded.current) {
       editedRecorded.current = true;
-      void record("draft_edited", { rating: rating ?? undefined, draftSource: source, edited: true, lengthBucket: bucket(value.length), draftId });
+      void record("draft_edited", { rating: rating ?? undefined, draftSource: source, edited: true, lengthBucket: lengthBucketForText(value), draftId });
     }
   };
 
@@ -123,7 +116,7 @@ export function ReviewFlow({ slug }: { slug: string }) {
     if (copy) {
       try {
         await navigator.clipboard.writeText(text.trim()); copyOutcome = "succeeded";
-        void record("draft_copied", { rating, draftSource: source, lengthBucket: bucket(text.trim().length), draftId });
+        void record("draft_copied", { rating, draftSource: source, lengthBucket: lengthBucketForText(text), draftId });
       } catch { copyOutcome = "failed"; }
     }
     const pendingWindow = window.open("", "_blank");

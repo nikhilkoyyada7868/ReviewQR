@@ -66,7 +66,7 @@ export function RestaurantForm({ record }: { record?: RestaurantRecord }) {
       });
       const body = await response.json() as { restaurant?: RestaurantRecord; error?: { message: string } };
       if (!response.ok || !body.restaurant) throw new Error(body.error?.message ?? "The restaurant could not be saved.");
-      router.push(`/admin/restaurants/${encodeURIComponent(body.restaurant.id)}?saved=1`); router.refresh();
+      window.location.assign(`/admin/restaurants/${encodeURIComponent(body.restaurant.id)}?saved=1`);
     } catch (error) { setServerMessage(error instanceof Error ? error.message : "The restaurant could not be saved."); setStatus("error"); }
   };
 

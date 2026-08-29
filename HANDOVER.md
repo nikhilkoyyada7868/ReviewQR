@@ -4,11 +4,11 @@
 
 **Branch:** `main`
 
-**Baseline commit:** `22a40b9 feat: build ReviewQR MVP`
+**Baseline commit:** use the latest commit on `main`; QA hardening follows the original MVP commit `22a40b9`
 
 **Handover date:** 2026-08-29
 
-**Delivery state:** Functional local MVP; automated checks pass; deployment and final browser acceptance remain pending.
+**Delivery state:** Functional, QA-hardened local MVP; conditionally approved for product-owner acceptance. Production deployment remains pending.
 
 This document is the starting point for another AI or engineer. Read it first, then read `docs/PRD.md`, `docs/ARCHITECTURE.md`, and `docs/TEST_STRATEGY.md` before changing product behavior.
 
@@ -192,7 +192,7 @@ The schema has six tables:
 4. `analytics_events`
    - Event ID, restaurant/session relationship, event type, optional rating, allowlisted metadata JSON, optional dedupe key, and occurrence time.
 5. `operation_keys`
-   - Idempotency records; currently used for restaurant creation.
+   - Idempotency records used for restaurant creation and privacy-safe draft-attempt claims. Draft text is never stored for replay.
 6. `rate_limit_buckets`
    - D1-backed fixed-window counters for draft and event requests.
 
@@ -332,6 +332,8 @@ The fixture Google URL is syntactically valid for testing but is not guaranteed 
 
 ## 13. Verification status
 
+The continuation QA evidence and per-test disposition are in `docs/QA_REPORT.md`. The current suite passes 17 backend tests and 6 UI contract tests in addition to the production build. The older baseline results below are retained only as delivery history.
+
 The following passed immediately before the baseline commit:
 
 ```bash
@@ -351,38 +353,30 @@ The backend tests cover deterministic drafts for every rating, grounding, advers
 
 The UI contract tests inspect source contracts for equal treatment of ratings, honest handoff language, accessibility semantics, responsive rules, admin essentials, immutable slug UI, and removal of starter scaffolding.
 
-### QA interruption
+### Original QA interruption (resolved by continuation)
 
 The planned QA matrix contains QA-001–QA-028. QA found one P0 during execution: superficially valid AI text could include ungrounded or rating-inconsistent claims. That issue was fixed by adding grounding, unsupported-claim, and sentiment checks plus adversarial tests.
 
-The QA agent, Software Development Manager agent, and Product Manager agent then hit the Codex usage limit before the full browser matrix and final PM acceptance could finish. Therefore:
+The original role-based run hit the Codex usage limit before the browser matrix could finish. The primary agent subsequently continued the work without sub-agents, fixed the defects below, executed the local browser/API matrix, and recorded conditional PM acceptance in `docs/QA_REPORT.md`.
 
-- Do not claim that QA-001–QA-028 all passed.
-- Do not claim Product Manager final approval.
-- Automated build and tests are green.
-- Full interactive browser, responsive-device, clipboard/pop-up, keyboard, screen-reader, and production-host identity validation remain acceptance work.
+- Automated build, tests, local API probes, admin onboarding, responsive Chromium checks, and privacy inspection are green.
+- Do not claim unconditional production approval: real OS clipboard readback, physical keyboard use, production-host identity, and cross-browser/device compatibility still need target-environment confirmation.
 
-## 14. Known issues and follow-up gaps
+## 14. Resolved issues and remaining follow-up gaps
 
-These were identified during handover inspection and are not fixed in the baseline commit:
+The first three issues were identified in the original handover and fixed during continuation QA:
 
-### P1: customer session cookie path
+### Resolved: customer session cookie path
 
-The initial public data request is under `/api/public/restaurants/:slug`, but the `rq_session` cookie is set with `Path=/r`. Browsers will not send a `/r`-scoped cookie to the `/api/...` lookup. A full page reload can therefore create a new session instead of reusing the prior session.
+The `rq_session` cookie now uses `Path=/`, remains `HttpOnly` and `SameSite=Lax`, and adds `Secure` on HTTPS. API/cookie-jar verification proves repeat lookups reuse the same session.
 
-Recommended next step: decide the desired cross-restaurant/session behavior, change the cookie scope safely (likely `Path=/` with restaurant ownership still checked server-side), and add browser/API tests covering reload, another restaurant, expiration, and tampering.
+### Resolved: draft idempotency
 
-### P1: draft idempotency is validated but not enforced
+`ReviewService.generate` now atomically claims a scoped D1 operation key. A repeat returns `409 CONFLICT`; the stored response reference is `privacy_no_replay`, so draft text is not persisted.
 
-`GenerateDraftRequest` requires `idempotencyKey`, but `ReviewService.generate` and the repository do not currently use it. Retried draft requests can generate multiple drafts/events, subject only to rate limiting.
+### Resolved: length-bucket unit mismatch
 
-Recommended next step: use `operation_keys` with a draft-generation scope, store only a safe response reference or design an ephemeral replay strategy that does not persist review text, and add retry/concurrency tests.
-
-### P2: length-bucket unit mismatch
-
-`ReviewService.wordLengthBucket` buckets word count. The browser's `bucket()` helper receives character length for copied/edited drafts. Analytics can therefore mix word-based and character-based values under the same `lengthBucket` field.
-
-Recommended next step: define the metric as words or characters in the contract, implement the same calculation in both places, migrate naming if necessary, and test boundary values.
+The browser and server now use the shared `lengthBucketForText` word-count function, with boundary and source-contract tests.
 
 ### P2: optional customer detail is API-only
 
@@ -407,14 +401,11 @@ The admin detail page uses `<img>` for a protected, dynamically generated SVG QR
 
 ## 15. Recommended next work order
 
-1. Fix and test the session-cookie path issue.
-2. Define and implement privacy-safe draft idempotency.
-3. Normalize analytics length buckets.
-4. Run the complete QA-001–QA-028 matrix and save evidence in `docs/QA_REPORT.md`.
-5. Have the Product Manager compare results with all 14 acceptance criteria and record approval or blockers.
-6. Let the product owner perform local acceptance testing.
-7. Replace the demo Google URL with a real pilot restaurant link.
-8. Only after acceptance, use the Sites hosting workflow to deploy and configure D1 and runtime secrets.
+1. Let the product owner perform local acceptance testing, including exact clipboard content and a physical keyboard pass.
+2. Confirm production Sites identity headers/allowlist behavior.
+3. Run Safari, Firefox, Edge, Android, and iOS compatibility smoke tests.
+4. Replace the demo Google URL with a real pilot restaurant link.
+5. Only after acceptance, use the Sites hosting workflow to deploy and configure D1 and runtime secrets.
 
 ## 16. Instructions for the next AI
 

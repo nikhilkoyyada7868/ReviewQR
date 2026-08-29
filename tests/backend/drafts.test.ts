@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DeterministicDraftGenerator, DefaultDraftPolicy } from "../../src/infrastructure/ai/deterministic";
+import { lengthBucketForText } from "../../src/domain/review";
+import { DuplicateRequestError, NotFoundError, RateLimitError } from "../../src/application/review-service";
+
+test("service errors retain their HTTP mapping identities", () => {
+  assert.equal(new NotFoundError().name, "NotFoundError");
+  assert.equal(new RateLimitError().name, "RateLimitError");
+  assert.equal(new DuplicateRequestError().name, "DuplicateRequestError");
+});
+
+test("length buckets use word counts consistently", () => {
+  assert.equal(lengthBucketForText("one two three"), "10-24");
+  assert.equal(lengthBucketForText(Array.from({ length: 25 }, () => "word").join(" ")), "25-60");
+  assert.equal(lengthBucketForText(Array.from({ length: 61 }, () => "word").join(" ")), "61-250");
+  assert.equal(lengthBucketForText(Array.from({ length: 251 }, () => "word").join(" ")), "251-1000");
+});
 
 for (const rating of [1, 2, 3, 4, 5] as const) {
   test(`deterministic fallback is usable and grounded for rating ${rating}`, async () => {

@@ -22,8 +22,9 @@ export async function GET(request: Request, context: { params: Promise<{ restaur
       sessionId, eventType: "qr_page_viewed", metadata: {},
       dedupeKey: `view:${sessionId}:${Math.floor(now / 1_800_000)}`, occurredAt: now,
     }).catch(() => undefined);
+    const secure = new URL(request.url).protocol === "https:" ? "; Secure" : "";
     return json({ restaurant, sessionId }, 200, {
-      "set-cookie": `${COOKIE}=${encodeURIComponent(sessionId)}; Path=/r; Max-Age=86400; HttpOnly; Secure; SameSite=Lax`,
+      "set-cookie": `${COOKIE}=${encodeURIComponent(sessionId)}; Path=/; Max-Age=86400; HttpOnly${secure}; SameSite=Lax`,
       "cache-control": "no-store",
     });
   } catch (error) {

@@ -28,6 +28,13 @@ export interface ReviewQRRepository
     sessionId: string,
     restaurantId: string,
   ): Promise<boolean>;
+  claimOperationKey(
+    scope: string,
+    key: string,
+    responseRef: string,
+    now: number,
+    ttlMs: number,
+  ): Promise<boolean>;
   listRestaurants(): Promise<RestaurantRecord[]>;
   createRestaurant(
     input: AdminRestaurantInput,

@@ -8,6 +8,7 @@ export type ApiErrorCode =
   | "NOT_FOUND"
   | "INACTIVE_RESTAURANT"
   | "RATE_LIMITED"
+  | "CONFLICT"
   | "SERVICE_UNAVAILABLE";
 
 export interface ApiError {
